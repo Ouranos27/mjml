@@ -31,6 +31,7 @@ import suffixCssClasses from './helpers/suffixCssClasses'
 import mergeOutlookConditionnals from './helpers/mergeOutlookConditionnals'
 import minifyOutlookConditionnals from './helpers/minifyOutlookConditionnals'
 import defaultSkeleton from './helpers/skeleton'
+import genRandomHexString from './helpers/genRandomHexString'
 import loadSkeletonFromFile from './node-only/skeleton-loader'
 import { initializeType } from './types/type'
 
@@ -827,27 +828,42 @@ export default async function mjml2html(mjml, options = {}) {
 
   if (!isEmpty(globalData.htmlAttributes)) {
     // xmlMode would treat <br> as a container. Close it so a selector can
-    // still match the <br>, and so it does not swallow what follows. Comments
-    // are lifted first because their contents are never parsed.
-    const comments = []
-    content = content.replace(/<!--[\s\S]*?-->/g, (comment) => {
-      const token = `MJMLCOMMENT${comments.length}END`
-      comments.push(comment)
-      return token
-    })
-
+    // still match the <br>, and so it does not swallow what follows.
+    const hasBr = /<br[\s/>]/i.test(content)
     const brTags = []
-    content = content.replace(/<br\b[^>]*>/gi, (tag) => {
-      const id = brTags.length
-      brTags.push(tag)
-      const open = tag.slice(0, tag.endsWith('/>') ? -2 : -1).trimEnd()
-      return `${open} data-mjml-br="${id}"></br>`
-    })
+    const brToken = hasBr ? `MJMLBR${genRandomHexString(16)}_` : ''
+    const brAttr = hasBr ? `data-mjml-br-${genRandomHexString(16)}` : ''
+
+    if (hasBr) {
+      // Comments and other tags are matched in the same pass and left as they
+      // are. A comment's contents are never parsed, and a "<br" inside an
+      // attribute value of another tag is text, not an element.
+      content = content.replace(
+        /<!--[\s\S]*?(?:-->|$)|<br(?=[\s/>])(?:"[^"]*"|'[^']*'|[^'"<>])*>|<[a-z/!?](?:"[^"]*"|'[^']*'|[^<>"'])*>/gi,
+        (match) => {
+          if (!/^<br/i.test(match)) return match
+
+          const id = brTags.length
+          brTags.push(match)
+          const open = match.slice(0, match.endsWith('/>') ? -2 : -1).trimEnd()
+          return `<br ${brAttr}="${id}"${open.slice(3)}></br>`
+        },
+      )
+    }
 
     const $ = load(content, {
       xmlMode: true, // otherwise it may move contents that aren't in any tag
       decodeEntities: false, // won't escape special characters
     })
+
+    // Snapshot of each <br>'s attributes before the selectors run, to know
+    // which ones a selector changed.
+    const brEntries = (hasBr ? $(`br[${brAttr}]`).toArray() : []).map(
+      (element) => {
+        const { [brAttr]: id, ...attribs } = element.attribs
+        return { element, id, before: attribs }
+      },
+    )
 
     each(globalData.htmlAttributes, (data, selector) => {
       each(data, (value, attrName) => {
@@ -857,32 +873,25 @@ export default async function mjml2html(mjml, options = {}) {
       })
     })
 
-    $('br[data-mjml-br]').each(function () {
-      const id = $(this).attr('data-mjml-br')
-      $(this).removeAttr('data-mjml-br')
-      const attribs = { ...(this.attribs || {}) }
-      delete attribs['data-mjml-br']
-      const parsed = {}
-      const body = brTags[id].replace(/^<br\b/i, '').replace(/\s*\/?>$/, '')
-      const re = /([^\s="']+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+)))?/g
-      let match = re.exec(body)
-      while (match) {
-        parsed[match[1]] = match[2] || match[3] || match[4] || ''
-        match = re.exec(body)
+    brEntries.forEach(({ element, id, before }) => {
+      const { [brAttr]: _id, ...attribs } = element.attribs
+      const names = Object.keys(attribs)
+      const changed =
+        names.length !== Object.keys(before).length ||
+        names.some((name) => attribs[name] !== before[name])
+      if (changed) {
+        brTags[id] = `<br${names.map((name) => ` ${name}="${attribs[name].replace(/"/g, '&quot;')}"`).join('')}>`
       }
-      const keys = Object.keys(attribs)
-      const same =
-        keys.length === Object.keys(parsed).length &&
-        keys.every((key) => attribs[key] === parsed[key])
-      if (!same) {
-        brTags[id] = `<br${keys.map((name) => ` ${name}="${attribs[name]}"`).join('')}>`
-      }
-      $(this).replaceWith(`MJMLBR${id}END`)
+      $(element).replaceWith(`${brToken}${id}END`)
     })
 
     content = $.root().html()
-    content = content.replace(/MJMLBR(\d+)END/g, (_, i) => brTags[i])
-    content = content.replace(/MJMLCOMMENT(\d+)END/g, (_, i) => comments[i])
+    if (hasBr) {
+      content = content.replace(
+        new RegExp(`${brToken}(\\d+)END`, 'g'),
+        (token, id) => brTags[id] ?? token,
+      )
+    }
   }
 
   content = skeleton({

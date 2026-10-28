@@ -209,5 +209,63 @@ describe('html-attributes', function () {
         )
         .to.equal(without.html.includes(comment))
     })
+
+    const withBrSelector = (text) => `
+<mjml>
+  <mj-head>
+    <mj-html-attributes>
+      <mj-selector path="br">
+        <mj-html-attribute name="class">break</mj-html-attribute>
+      </mj-selector>
+    </mj-html-attributes>
+  </mj-head>
+  <mj-body>
+    <mj-section>
+      <mj-column>
+        ${text}
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>
+`
+
+    it('keeps a > inside a quoted <br> attribute value', async function () {
+      await expectBrParity('<p>Hello<br title="a>b">World!</p>')
+    })
+
+    it('keeps an authored data-mjml-br attribute', async function () {
+      await expectBrParity('<p>Hello<br data-mjml-br="99">World!</p>')
+
+      const { html } = await mjml(
+        withBrSelector(
+          '<mj-text><p>Hello<br data-mjml-br="99">World!</p></mj-text>',
+        ),
+      )
+      chai.expect(html).to.include('<br data-mjml-br="99" class="break">')
+    })
+
+    it('keeps an uppercase <BR> as authored', async function () {
+      const { html } = await mjml(template(true, '<p>Hello<BR>World!</p>'))
+      chai.expect(html).to.include('Hello<BR>World!')
+    })
+
+    it('adds an attribute to an uppercase <BR> when the selector path is br', async function () {
+      const { html } = await mjml(
+        withBrSelector('<mj-text><p>Hello<BR>World!</p></mj-text>'),
+      )
+      chai.expect(html).to.include('Hello<br class="break">World!')
+      chai.expect(html).to.not.include('</br>')
+    })
+
+    it('leaves a <br> inside another tag attribute alone', async function () {
+      const { html } = await mjml(
+        withBrSelector(`
+        <mj-text><p title="a<br>b">Hello</p></mj-text>
+        <mj-image src="https://example.com/a.png" alt="a<br>b" />`),
+      )
+      chai.expect(html).to.include('<p title="a<br>b">')
+      chai.expect(html).to.include('alt="a<br>b"')
+      chai.expect(html).to.not.include('data-mjml-br')
+    })
   })
 })
