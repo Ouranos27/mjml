@@ -835,11 +835,11 @@ export default async function mjml2html(mjml, options = {}) {
     const brAttr = hasBr ? `data-mjml-br-${genRandomHexString(16)}` : ''
 
     if (hasBr) {
-      // Comments and other tags are matched in the same pass and left as they
-      // are. A comment's contents are never parsed, and a "<br" inside an
-      // attribute value of another tag is text, not an element.
+      // Comments, CDATA sections and other tags are matched in the same pass
+      // and left as they are. Their contents are never parsed, and a "<br"
+      // inside an attribute value of another tag is text, not an element.
       content = content.replace(
-        /<!--(?:-?>|[\s\S]*?(?:-->|$))|<\/br\s*>|<br(?=[\s/>])(?:"[^"]*"|'[^']*'|[^'"<>])*>|<[a-z/!?](?:"[^"]*"|'[^']*'|[^<>"'])*>/gi,
+        /<!\[CDATA\[[\s\S]*?(?:\]\]>|$)|<!--(?:-?>|[\s\S]*?(?:-->|$))|<\/br\s*>|<br(?=[\s/>])(?:"[^"]*"|'[^']*'|[^'"<>])*>|<[a-z/!?](?:"[^"]*"|'[^']*'|[^<>"'])*>/gi,
         (match) => {
           const isCloseTag = /^<\/br\s*>$/i.test(match)
           if (!isCloseTag && !/^<br[\s/>]/i.test(match)) return match

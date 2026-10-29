@@ -326,6 +326,19 @@ describe('html-attributes', function () {
       })
     })
 
+    it('leaves a <br> inside a CDATA section alone', async function () {
+      const cdata = '<svg><text><![CDATA[a<br>b]]></text></svg>'
+      const { html } = await mjml(
+        withBrSelector(
+          `<mj-raw>${cdata}</mj-raw><mj-text><p>Hello<br>World!</p></mj-text>`,
+        ),
+      )
+      chai.expect(html).to.include(cdata)
+      chai.expect(html).to.include('Hello<br class="break">World!')
+      chai.expect(html).to.not.include('data-mjml-br')
+      chai.expect(html).to.not.include('</br>')
+    })
+
     it('leaves a <br> inside another tag attribute alone', async function () {
       const { html } = await mjml(
         withBrSelector(`
