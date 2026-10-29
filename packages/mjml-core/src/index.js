@@ -829,7 +829,7 @@ export default async function mjml2html(mjml, options = {}) {
   if (!isEmpty(globalData.htmlAttributes)) {
     // xmlMode would treat <br> as a container. Close it so a selector can
     // still match the <br>, and so it does not swallow what follows.
-    const hasBr = /<br[\s/>]/i.test(content)
+    const hasBr = /<\/?br[\s/>]/i.test(content)
     const brTags = []
     const brToken = hasBr ? `MJMLBR${genRandomHexString(16)}_` : ''
     const brAttr = hasBr ? `data-mjml-br-${genRandomHexString(16)}` : ''
@@ -839,12 +839,14 @@ export default async function mjml2html(mjml, options = {}) {
       // are. A comment's contents are never parsed, and a "<br" inside an
       // attribute value of another tag is text, not an element.
       content = content.replace(
-        /<!--[\s\S]*?(?:-->|$)|<br(?=[\s/>])(?:"[^"]*"|'[^']*'|[^'"<>])*>|<[a-z/!?](?:"[^"]*"|'[^']*'|[^<>"'])*>/gi,
+        /<!--(?:-?>|[\s\S]*?(?:-->|$))|<\/br\s*>|<br(?=[\s/>])(?:"[^"]*"|'[^']*'|[^'"<>])*>|<[a-z/!?](?:"[^"]*"|'[^']*'|[^<>"'])*>/gi,
         (match) => {
-          if (!/^<br/i.test(match)) return match
+          const isCloseTag = /^<\/br\s*>$/i.test(match)
+          if (!isCloseTag && !/^<br[\s/>]/i.test(match)) return match
 
           const id = brTags.length
           brTags.push(match)
+          if (isCloseTag) return `${brToken}${id}END`
           const open = match.slice(0, match.endsWith('/>') ? -2 : -1).trimEnd()
           return `<br ${brAttr}="${id}"${open.slice(3)}></br>`
         },

@@ -257,6 +257,75 @@ describe('html-attributes', function () {
       chai.expect(html).to.not.include('</br>')
     })
 
+    it('leaves tags whose name merely starts with "br" alone', async function () {
+      const text =
+        '<p><brand>x</brand> a<br>b <br-x data-a="1">y</br-x> <breadcrumb/></p>'
+      const [without, withSelector] = await Promise.all([
+        mjml(template(false, text)),
+        mjml(template(true, text)),
+      ])
+      chai.expect(withSelector.html).to.include(text)
+      chai.expect(withSelector.html).to.not.include('data-mjml-br')
+      chai.expect(brTags(withSelector.html)).to.deep.equal(brTags(without.html))
+    })
+
+    it('does not mistake a "br"-prefixed tag for the <br> a selector targets', async function () {
+      const { html } = await mjml(
+        withBrSelector(
+          '<mj-text><p><brand>x</brand>Hello<br>World!</p></mj-text>',
+        ),
+      )
+      chai
+        .expect(html)
+        .to.include('<brand>x</brand>Hello<br class="break">World!')
+    })
+
+    const closers = {
+      '<br></br>': 'a<br></br>b',
+      '<br/></br>': 'a<br/></br>b',
+      '<br></br > with a space': 'a<br></br >b',
+    }
+
+    Object.entries(closers).forEach(([form, text]) => {
+      it(`keeps an authored ${form} when an mj-selector is present`, async function () {
+        const { html } = await mjml(template(true, `<p>${text}</p>`))
+        chai.expect(html).to.include(`<p>${text}</p>`)
+        chai.expect(html).to.not.include('data-mjml-br')
+      })
+    })
+
+    it('keeps a lone </br> when an mj-selector is present', async function () {
+      const { html } = await mjml(template(true, '<p>a</br>b</p>'))
+      chai.expect(html).to.include('<p>a</br>b</p>')
+    })
+
+    it('does not mistake </brand> for a </br>', async function () {
+      const { html } = await mjml(template(true, '<p><brand>x</brand>a<br>b</p>'))
+      chai.expect(html).to.include('<p><brand>x</brand>a<br>b</p>')
+    })
+
+    it('adds the attribute once to a <br> followed by an authored </br>', async function () {
+      const { html } = await mjml(withBrSelector('<mj-text><p>a<br></br>b</p></mj-text>'))
+      chai.expect(html).to.include('<p>a<br class="break"></br>b</p>')
+    })
+
+    const emptyComments = ['<!-->', '<!--->']
+
+    emptyComments.forEach((comment) => {
+      it(`does not let ${comment} swallow what follows it`, async function () {
+        const { html } = await mjml(
+          withBrSelector(
+            `<mj-text><p>${comment}a<br>b</p><p><span>c</span><br>d</p></mj-text>`,
+          ),
+        )
+        // cheerio rewrites the short forms as the equivalent <!---->
+        chai
+          .expect(html)
+          .to.include('<p><!---->a<br class="break">b</p><p><span>c</span><br class="break">d</p>')
+        chai.expect(html).to.not.include('</br>')
+      })
+    })
+
     it('leaves a <br> inside another tag attribute alone', async function () {
       const { html } = await mjml(
         withBrSelector(`
